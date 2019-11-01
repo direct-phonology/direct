@@ -27,30 +27,17 @@ class Match(object):
 
     def resolve(self, a: str, b: str):
         """Get the actual text of a match by mapping its locations to texts."""
-        return '%s :: %s\t%s' % (
+        return '%s :: %s' % (
             a[self.a_start:self.a_end + 1],
             b[self.b_start:self.b_end + 1],
-            str(self)
         )
 
 
 class Comparator(object):
-    a: str
-    b: str
-    a_name: str
-    b_name: str
-    a_linemap: List[int]
-    b_linemap: List[int]
-    matches: List[Match]
+    phondict: Dict
 
-    def __init__(self, a: str, b: str, a_name: str, b_name: str):
-        self.a = a
-        self.b = b
-        self.a_name = splitext(basename(a_name))[0]
-        self.b_name = splitext(basename(b_name))[0]
-        self.a_linemap = self.get_linemap(self.a)
-        self.b_linemap = self.get_linemap(self.b)
-        self.matches = []
+    def __init__(self, phondict: Dict = DUMMY_DICT):
+        self.phondict = phondict
 
     @staticmethod
     def get_linemap(text: str):
@@ -74,20 +61,25 @@ class Comparator(object):
         # save the lines into a new string
         # write the string to a file
 
-    @staticmethod
-    def get_text_ngrams(text: str, n: int = 3) -> List[Dict]:
+    def get_text_ngrams(self, text: str, n: int = 3) -> List[Dict]:
         """Returns all overlapping token ngrams for a text, with start and end
         pointers to locations in the original text."""
+
         if n < 1:
             raise ValueError('Value for `n` must be 1 or greater.')
+        if n > len(text):
+            raise ValueError('Value for `n` must be less than or equal to \
+                length of text.')
+
         ngrams = []
+
         for pos, char in enumerate(text):
             if char.isalpha():
                 # create a new ngram
                 ngram = {'text': '', 'start': None, 'end': None}
                 # add either the original character or a token if we have one
-                if char in DUMMY_DICT:
-                    char_to_append = DUMMY_DICT[char][2]
+                if char in self.phondict:
+                    char_to_append = self.phondict[char][2]
                 else:
                     char_to_append = char
                 ngram['text'] += char_to_append
@@ -107,13 +99,11 @@ class Comparator(object):
         # return all but the last n - 1 ngrams, as they are redundant
         return ngrams[:len(ngrams) - n + 1]
 
-    def get_initial_matches(self, n: int = 3) -> List[Match]:
+    @staticmethod
+    def get_initial_matches(a_ngrams: List[Dict], b_ngrams: List[Dict]) -> List[Match]:
         """Gets a set of initial, overlapping matches between two texts that can
         be further refined using `reduce_matches`."""
         initial_matches = []
-        # get ngrams for both texts
-        a_ngrams = self.get_text_ngrams(self.a, n)
-        b_ngrams = self.get_text_ngrams(self.b, n)
         # match every ngram in A against every ngram in B
         for a_ngram in a_ngrams:
             for b_ngram in b_ngrams:
@@ -159,15 +149,19 @@ class Comparator(object):
                 range(match.b_start, match.b_end))
         return grouped_matches
 
-    def resolve_groups(self, matches: Dict[range, List[range]]) -> str:
+    @staticmethod
+    def resolve_groups(a_text: str, b_text: str, groups: Dict[range, List[range]], a_label: str = 'a', b_label: str = 'b') -> str:
         """Print grouped matches by mapping their locations to texts."""
         output = ''
-        for a, bs in matches.items():
+        a_linemap = Comparator.get_linemap(a_text)
+        b_linemap = Comparator.get_linemap(b_text)
+
+        for a, bs in groups.items():
             output += '%s (%s: %d)\n' % (
-                self.a[a.start:a.stop+1], self.a_name, self.a_linemap[a.start])
+                a_text[a.start:a.stop+1], a_label, a_linemap[a.start])
             for b in bs:
                 output += '%s (%s: %d)\n' % (
-                    self.b[b.start:b.stop+1], self.b_name, self.b_linemap[b.start])
+                    b_text[b.start:b.stop+1], b_label, b_linemap[b.start])
             output += '\n'
         return output
 
